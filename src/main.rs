@@ -13,8 +13,7 @@ use lapce_plugin::{
     register_plugin, LapcePlugin, VoltEnvironment, PLUGIN_RPC,
 };
 use serde_json::Value;
-use std::io::{BufWriter, Write, IoSlice};
-use std::fs::File;
+use std::path::PathBuf;
 
 #[derive(Default)]
 struct State {}
@@ -22,14 +21,21 @@ struct State {}
 register_plugin!(State);
 
 fn initialize(params: InitializeParams) -> Result<()> {
-    let document_selector: DocumentSelector = vec![DocumentFilter {
-        // lsp language id
-        language: Some(String::from("thrift")),
-        // glob pattern
-        pattern: Some(String::from("**/*.thrift")),
-        // like file:
-        scheme: None,
-    }];
+    let document_selector: DocumentSelector = vec![
+        DocumentFilter {
+            language: None, // This alone doesn't work, should be with pattern
+            pattern: Some(String::from("**/*.thrift")),
+            scheme: None,
+        },
+        DocumentFilter {
+            // lsp language id
+            language: Some(String::from("thrift")),
+            // glob pattern
+            pattern: None,
+            // like file:
+            scheme: None,
+        }
+    ];
     let mut server_args = vec![];
 
     // Check for user specified LSP server path
@@ -101,30 +107,21 @@ fn initialize(params: InitializeParams) -> Result<()> {
     let volt_uri = VoltEnvironment::uri()?;
     let server_uri = Url::parse(&volt_uri)?.join(filename.as_str())?;
 
-    // see lapce_plugin::Http for available API to download files
-    let mut download_res = lapce_plugin::Http::get(download_uri.as_str())?;
+    let file_path = PathBuf::from(server_uri.path());
+    if !file_path.exists() {
+        // see lapce_plugin::Http for available API to download files
+        let mut download_res = lapce_plugin::Http::get(download_uri.as_str())?;
 
-    if download_res.status_code.as_u16() / 100 != 2 {
-        let err_msg = download_res.body_read_all()?;
-        let err_msg = String::from_utf8(err_msg)?;
-        // download error
-        return Err(anyhow!(format!("download error: {}", err_msg)));
-    } 
-
-    {
-        // save response to server uri as a binary file
-        let binary_file = File::create(server_uri.as_str())?;
-        let mut buf_writer = BufWriter::new(binary_file);
-        loop {
-            let mut buffer = [0 as u8; 256*1024];
-            let read_size = download_res.body_read(buffer.as_mut_slice())?;
-            if read_size == 0 {
-                break;
-            }
-            let io_slice = IoSlice::new(&buffer[0..read_size]);
-            let _ = buf_writer.write_vectored(&[io_slice]);
+        if download_res.status_code.as_u16() / 100 != 2 {
+            let err_msg = download_res.body_read_all()?;
+            let err_msg = String::from_utf8(err_msg)?;
+            // download error
+            return Err(anyhow!(format!("download error: {}", err_msg)));
         } 
-    } // buf write flush here
+
+        let body = download_res.body_read_all()?;
+        std::fs::write(file_path, body)?;
+    }
 
     // if you want to use server from PATH
     // let server_uri = Url::parse(&format!("urn:{filename}"))?;

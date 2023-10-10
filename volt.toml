@@ -12,7 +12,7 @@ language = ["thrift"]
 workspace-contains = []
 
 [config."lsp.serverPath"]
-default = ""
+default = "/usr/local/bin/thriftls"
 description = "Path to custom LSP executable"
 
 # [config."lsp.serverArgs"]
