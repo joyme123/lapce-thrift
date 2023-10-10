@@ -4,7 +4,7 @@
 #![deny(clippy::print_stdout)]
 #![deny(clippy::print_stderr)]
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use lapce_plugin::{
     psp_types::{
         lsp_types::{request::Initialize, DocumentFilter, DocumentSelector, InitializeParams, Url, MessageType},
@@ -13,6 +13,8 @@ use lapce_plugin::{
     register_plugin, LapcePlugin, VoltEnvironment, PLUGIN_RPC,
 };
 use serde_json::Value;
+use std::io::{BufWriter, Write, IoSlice};
+use std::fs::File;
 
 #[derive(Default)]
 struct State {}
@@ -22,9 +24,9 @@ register_plugin!(State);
 fn initialize(params: InitializeParams) -> Result<()> {
     let document_selector: DocumentSelector = vec![DocumentFilter {
         // lsp language id
-        language: Some(String::from("language_id")),
+        language: Some(String::from("thrift")),
         // glob pattern
-        pattern: Some(String::from("**/*.{ext1,ext2}")),
+        pattern: Some(String::from("**/*.thrift")),
         // like file:
         scheme: None,
     }];
@@ -55,7 +57,7 @@ fn initialize(params: InitializeParams) -> Result<()> {
                 if let Some(server_path) = server_path.as_str() {
                     if !server_path.is_empty() {
                         let server_uri = Url::parse(&format!("urn:{}", server_path))?;
-                        PLUGIN_RPC.start_lsp(
+                        let _ = PLUGIN_RPC.start_lsp(
                             server_uri,
                             server_args,
                             document_selector,
@@ -69,42 +71,67 @@ fn initialize(params: InitializeParams) -> Result<()> {
     }
 
     // Architecture check
-    let _ = match VoltEnvironment::architecture().as_deref() {
-        Ok("x86_64") => "x86_64",
-        Ok("aarch64") => "aarch64",
+    let arch = match VoltEnvironment::architecture().as_deref() {
+        Ok("x86_64") => "amd64",
+        Ok("aarch64") => "arm64",
         _ => return Ok(()),
     };
 
     // OS check
-    let _ = match VoltEnvironment::operating_system().as_deref() {
-        Ok("macos") => "macos",
+    let os = match VoltEnvironment::operating_system().as_deref() {
+        Ok("macos") => "darwin",
         Ok("linux") => "linux",
         Ok("windows") => "windows",
         _ => return Ok(()),
     };
 
-    // Download URL
-    // let _ = format!("https://github.com/<name>/<project>/releases/download/<version>/{filename}");
+    let filename = format!("thriftls-{}-{}", os, arch);
 
-    // see lapce_plugin::Http for available API to download files
-
-    let _ = match VoltEnvironment::operating_system().as_deref() {
+    let filename = match VoltEnvironment::operating_system().as_deref() {
         Ok("windows") => {
-            format!("{}.exe", "[filename]")
+            format!("{}.exe", filename)
         }
-        _ => "[filename]".to_string(),
+        _ => filename.to_string(),
     };
+
+    // Download URL
+    let download_uri = format!("https://github.com/joyme123/thrift-ls/releases/download/v0.1.0/{filename}");
 
     // Plugin working directory
     let volt_uri = VoltEnvironment::uri()?;
-    let server_uri = Url::parse(&volt_uri)?.join("[filename]")?;
+    let server_uri = Url::parse(&volt_uri)?.join(filename.as_str())?;
+
+    // see lapce_plugin::Http for available API to download files
+    let mut download_res = lapce_plugin::Http::get(download_uri.as_str())?;
+
+    if download_res.status_code.as_u16() / 100 != 2 {
+        let err_msg = download_res.body_read_all()?;
+        let err_msg = String::from_utf8(err_msg)?;
+        // download error
+        return Err(anyhow!(format!("download error: {}", err_msg)));
+    } 
+
+    {
+        // save response to server uri as a binary file
+        let binary_file = File::create(server_uri.as_str())?;
+        let mut buf_writer = BufWriter::new(binary_file);
+        loop {
+            let mut buffer = [0 as u8; 256*1024];
+            let read_size = download_res.body_read(buffer.as_mut_slice())?;
+            if read_size == 0 {
+                break;
+            }
+            let io_slice = IoSlice::new(&buffer[0..read_size]);
+            let _ = buf_writer.write_vectored(&[io_slice]);
+        } 
+    } // buf write flush here
 
     // if you want to use server from PATH
     // let server_uri = Url::parse(&format!("urn:{filename}"))?;
 
     // Available language IDs
     // https://github.com/lapce/lapce/blob/HEAD/lapce-proxy/src/buffer.rs#L173
-    PLUGIN_RPC.start_lsp(
+    let _ = PLUGIN_RPC.start_lsp(
         server_uri,
         server_args,
         document_selector,
@@ -121,7 +148,7 @@ impl LapcePlugin for State {
             Initialize::METHOD => {
                 let params: InitializeParams = serde_json::from_value(params).unwrap();
                 if let Err(e) = initialize(params) {
-                    PLUGIN_RPC.window_show_message(MessageType::ERROR, format!("plugin returned with error: {e}"))
+                    let _ = PLUGIN_RPC.window_show_message(MessageType::ERROR, format!("plugin returned with error: {e}"));
                 }
             }
             _ => {}

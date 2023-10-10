@@ -1,12 +1,14 @@
-name = "<plugin-name>"
-version = "0.0.0"
-author = "<your name>"
-display-name = "<plugin-display-name>"
-description = "<plugin-description>"
-wasm = "bin/<plugin-name>.wasm"
+name = "thrift-ls"
+version = "0.0.1"
+author = "joyme123"
+display-name = "thrift-ls"
+description = "thrift language server"
+wasm = "bin/lapce-thrift.wasm"
+icon = "icon.png"
+repository = "https://github.com/joyme123/lapce-thrift"
 
 [activation]
-language = []
+language = ["thrift"]
 workspace-contains = []
 
 [config."lsp.serverPath"]
