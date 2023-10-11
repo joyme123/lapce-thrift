@@ -1,5 +1,5 @@
 name = "thrift-ls"
-version = "0.0.1"
+version = "0.0.3"
 author = "joyme123"
 display-name = "thrift-ls"
 description = "thrift language server"
@@ -9,7 +9,7 @@ repository = "https://github.com/joyme123/lapce-thrift"
 
 [activation]
 language = ["thrift"]
-workspace-contains = []
+workspace-contains = ["**/*.thrift"]
 
 [config."lsp.serverPath"]
 default = "/usr/local/bin/thriftls"

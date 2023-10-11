@@ -23,18 +23,11 @@ register_plugin!(State);
 fn initialize(params: InitializeParams) -> Result<()> {
     let document_selector: DocumentSelector = vec![
         DocumentFilter {
-            language: None, // This alone doesn't work, should be with pattern
+            // lsp language id
+            language: Some(String::from("thrift")),
             pattern: Some(String::from("**/*.thrift")),
             scheme: None,
         },
-        DocumentFilter {
-            // lsp language id
-            language: Some(String::from("thrift")),
-            // glob pattern
-            pattern: None,
-            // like file:
-            scheme: None,
-        }
     ];
     let mut server_args = vec![];
 
